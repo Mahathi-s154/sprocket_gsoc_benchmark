@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+sprocket_py/target/
+sprocket_py/.maturin/
+sprocket_py/*.so
+sprocket_py/*.pyd
+
+.DS_Store
