@@ -93,7 +93,7 @@ Expected output for valid input:
 
 ## Benchmark Results
 
-This repository includes a simple benchmark harness in [`benchmark.py`](./benchmark.py) to compare the Rust-backed binding against `miniwdl`, a widely used pure-Python baseline.
+This repository includes a benchmark harness in [`benchmark.py`](./benchmark.py) to compare the Rust-backed binding against `miniwdl`, a widely used pure-Python baseline. The script validates both parsers on the same WDL input, runs a warmup pass, and reports multi-round summary statistics.
 
 Run it with:
 
@@ -102,16 +102,22 @@ source .venv/bin/activate
 python benchmark.py
 ```
 
+Optional flags:
+
+```bash
+python benchmark.py --iterations 5000 --rounds 5 --warmup-rounds 1
+```
+
 ### Results
 
-| Parser | Time |
-| --- | --- |
-| `miniwdl` | `[X.XX] seconds` |
-| `sprocket-py` | `[X.XX] seconds` |
+Measured on March 27, 2026 in the local project virtual environment with Python `3.12.3`, `miniwdl 1.13.1`, `sprocket_py 0.1.0`, `5000` parses per round, `1` warmup round, and `5` measured rounds.
 
-**Result:** `🚀 [XX]x faster!`
+| Parser | Mean Time | Fastest | Slowest | Std. Dev. | Throughput |
+| --- | --- | --- | --- | --- | --- |
+| `miniwdl` | `2.1070 s` | `2.0523 s` | `2.1592 s` | `0.0493 s` | `2373.08 docs/sec` |
+| `sprocket-py` | `0.3864 s` | `0.3854 s` | `0.3881 s` | `0.0010 s` | `12940.47 docs/sec` |
 
-Replace the placeholders above with the terminal output from your benchmark run.
+**Result:** `sprocket-py` was `5.45x` faster than `miniwdl` on mean runtime for this benchmark input.
 
 ## Next Steps for GSoC
 
