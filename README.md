@@ -201,14 +201,14 @@ python benchmark.py --iterations 5000 --rounds 5 --warmup-rounds 1
 
 ### Results
 
-Measured on March 27, 2026 in the local project virtual environment with Python `3.12.3`, `miniwdl 1.13.1`, `sprocket_py 0.1.0`, `5000` parses per round, `1` warmup round, and `5` measured rounds.
+Measured on March 31, 2026 in the local project virtual environment with Python `3.12.3`, `miniwdl 1.13.1`, `sprocket_py 0.1.0`, `5000` parses per round, `1` warmup round, and `5` measured rounds.
 
 | Parser | Mean Time | Fastest | Slowest | Std. Dev. | Throughput |
 | --- | --- | --- | --- | --- | --- |
-| `miniwdl` | `2.1070 s` | `2.0523 s` | `2.1592 s` | `0.0493 s` | `2373.08 docs/sec` |
-| `sprocket-py` | `0.3864 s` | `0.3854 s` | `0.3881 s` | `0.0010 s` | `12940.47 docs/sec` |
+| `miniwdl` | `3.6219 s` | `3.5382 s` | `3.7538 s` | `0.0815 s` | `1380.48 docs/sec` |
+| `sprocket-py` | `0.6078 s` | `0.6064 s` | `0.6093 s` | `0.0012 s` | `8226.63 docs/sec` |
 
-**Result:** `sprocket-py` was `5.45x` faster than `miniwdl` on mean runtime for this benchmark input.
+**Result:** `sprocket-py` was `5.96x` faster than `miniwdl` on mean runtime for this benchmark input.
 
 ## What This PoC Still Does Not Deliver
 
