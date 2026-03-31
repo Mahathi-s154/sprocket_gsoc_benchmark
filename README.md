@@ -1,33 +1,81 @@
 # sprocket-py-prototype (GSoC 2026 Proof of Concept)
 
-> A minimal PyO3/Maturin bridge that exposes St. Jude Cloud's Rust-based WDL parser to Python for significantly faster parsing in bioinformatics workflows.
+> A PyO3/Maturin proof of concept showing that Sprocket's Rust WDL parser can power a Python API with structured diagnostics while still preserving a fast benchmark path.
 
-This repository is a proof of concept for **Google Summer of Code 2026** around Python bindings for Sprocket's WDL tooling. The core parser lives in the Rust workspace maintained by the St. Jude Cloud team in [`stjude-rust-labs/wdl`](https://github.com/stjude-rust-labs/wdl), while many downstream bioinformatics users primarily work in Python.  
-The goal of this prototype is to show that a lightweight Rust extension can preserve the performance characteristics of the native parser while presenting a Python-friendly entry point.
+This repository is a proof of concept for **Google Summer of Code 2026** around Python bindings for Sprocket's WDL tooling. The parser itself lives in the Rust workspace maintained by the St. Jude Cloud team in [`stjude-rust-labs/wdl`](https://github.com/stjude-rust-labs/wdl). This prototype answers two questions:
 
-## Why This Prototype Matters
+1. Can the Rust parser be exposed cleanly to Python?
+2. Can the first Python-facing types be designed in a way that is useful for downstream tooling without committing to full AST exposure too early?
 
-WDL parsing is a foundational operation for workflow validation, tooling, IDE support, and pipeline orchestration. In Python-centric environments, parser throughput can become a bottleneck. This prototype demonstrates a direct path to:
+The answer to both is yes.
 
-- reuse the existing Rust parser implementation instead of reimplementing parsing logic in Python,
-- expose parser functionality through a familiar Python import,
-- create a foundation for future high-level Python models built on top of Sprocket's Rust AST.
+## What This PoC Demonstrates
 
-## Implemented Features
+- a Rust parser can be packaged as a Python extension with PyO3 and Maturin,
+- the binding can expose **structured diagnostics** instead of raw debug strings,
+- the original high-throughput benchmark path can be preserved for apples-to-apples performance measurement,
+- Python-facing API tests can validate the extension at the boundary where downstream users actually interact with it.
 
-The current proof of concept intentionally keeps the Python API small and verifiable:
+## Current Python API
 
-| Python API | Rust Entry Point | Current Return Value |
-| --- | --- | --- |
-| `parse_ast(source: str)` | `wdl_ast::Document::parse` | `(diagnostic_count, diagnostics)` |
-| `parse_cst(source: str)` | `wdl_grammar::SyntaxTree::parse` | `(diagnostic_count, diagnostics)` |
+The prototype now exposes both a structured API and legacy compatibility wrappers.
 
-- `parse_ast(source: &str)` maps directly to `wdl_ast::Document::parse`.
-- `parse_cst(source: &str)` maps directly to `wdl_grammar::SyntaxTree::parse`.
-- Both functions currently return a tuple of diagnostic count and rendered diagnostics.
-- For valid WDL input, the expected result is `(0, [])`.
+| Python API | Rust Entry Point | Return Value | Purpose |
+| --- | --- | --- | --- |
+| `parse(source: str)` | `wdl_ast::Document::parse` | `ParseResult` | Primary structured AST-backed parse path |
+| `parse_cst_structured(source: str)` | `wdl_grammar::SyntaxTree::parse` | `ParseResult` | Primary structured CST-backed parse path |
+| `parse_ast(source: str)` | `wdl_ast::Document::parse` | `(diagnostic_count, diagnostics)` | Legacy benchmark-compatible wrapper |
+| `parse_cst(source: str)` | `wdl_grammar::SyntaxTree::parse` | `(diagnostic_count, diagnostics)` | Legacy benchmark-compatible wrapper |
 
-## Architecture At a Glance
+### Structured types
+
+The structured surface is intentionally small:
+
+- `ParseResult`
+  - `diagnostics: list[PyDiagnostic]`
+  - `version: str | None`
+  - `document_kind: str | None`
+- `PyDiagnostic`
+  - `rule: str | None`
+  - `severity: str`
+  - `message: str`
+  - `fix: str | None`
+  - `labels: list[PyLabel]`
+- `PyLabel`
+  - `message: str`
+  - `span: PySpan`
+- `PySpan`
+  - `start: int`
+  - `end: int`
+
+`document_kind` is currently left as `None`. This PoC avoids guessing at a stable Python contract for higher-level AST categorization before the larger binding design is settled.
+
+## What We Learned From The Exploration
+
+### Valuable first Python-facing types
+
+- **Diagnostic** is worth exposing because it is immediately useful to CLI tooling, validation pipelines, editors, and tests.
+- **Label** and **Span** matter because diagnostics are much less useful without source ranges.
+- **Version** is a good top-level result field because Python callers often need basic document metadata without traversing a full AST.
+
+### Types that should stay internal for now
+
+- Generic AST/CST node graphs should remain Rust-internal at this stage.
+- Raw syntax nodes and token machinery are too implementation-shaped for a first Python API.
+- Exposing the full AST before agreeing on Python ergonomics would create a large, unstable surface too early.
+
+### Hard problem discovered but deferred
+
+The next major technical proof is **async analysis bridging**. The `wdl-analysis` layer is asynchronous, so a future PoC should show:
+
+- runtime management from Python,
+- GIL release around blocking Rust work,
+- a minimal `lint()` or analysis-oriented entry point,
+- error mapping across the async boundary.
+
+That work is intentionally deferred from this revision so the current PoC stays focused on structured type exposure and Python API testing.
+
+## Architecture At A Glance
 
 ```text
 Python code
@@ -35,21 +83,26 @@ Python code
     v
 PyO3 extension module (sprocket_py)
     |
-    +--> wdl_ast::Document::parse(...)     -> typed AST path
-    |
-    +--> wdl_grammar::SyntaxTree::parse(...) -> CST / grammar path
+    +--> parse(...)                -> structured AST-backed ParseResult
+    +--> parse_cst_structured(...) -> structured CST-backed ParseResult
+    +--> parse_ast(...)            -> legacy tuple wrapper for benchmarks
+    +--> parse_cst(...)            -> legacy tuple wrapper for benchmarks
 ```
 
 ## Repository Layout
 
 ```text
 .
+├── .venv/
 ├── benchmark.py
 ├── README.md
 └── sprocket_py/
     ├── Cargo.toml
     ├── pyproject.toml
-    └── src/lib.rs
+    ├── src/
+    │   └── lib.rs
+    └── tests/
+        └── test_sprocket_py.py
 ```
 
 ## Build Instructions
@@ -69,7 +122,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip
-python -m pip install maturin miniwdl
+python -m pip install maturin miniwdl pytest
 
 cd sprocket_py
 maturin develop
@@ -81,8 +134,25 @@ After `maturin develop`, the extension is installed into the active virtual envi
 
 ```python
 import sprocket_py
-source = "version 1.1\nworkflow hello {}"
-print(sprocket_py.parse_ast(source))
+
+result = sprocket_py.parse("version 1.1\nworkflow hello {}")
+print(result.version)
+print(len(result.diagnostics))
+```
+
+Expected output:
+
+```python
+1.1
+0
+```
+
+The benchmark-compatible wrapper is still available:
+
+```python
+import sprocket_py
+
+print(sprocket_py.parse_ast("version 1.1\nworkflow hello {}"))
 ```
 
 Expected output for valid input:
@@ -91,9 +161,30 @@ Expected output for valid input:
 (0, [])
 ```
 
+## Tests
+
+Python-facing tests live in `sprocket_py/tests/` and exercise the installed extension module rather than only Rust internals.
+
+Run them with:
+
+```bash
+source .venv/bin/activate
+cd sprocket_py
+pytest
+```
+
+Rust unit tests remain available as crate-level smoke coverage:
+
+```bash
+cd sprocket_py
+cargo test
+```
+
 ## Benchmark Results
 
 This repository includes a benchmark harness in [`benchmark.py`](./benchmark.py) to compare the Rust-backed binding against `miniwdl`, a widely used pure-Python baseline. The script validates both parsers on the same WDL input, runs a warmup pass, and reports multi-round summary statistics.
+
+The benchmark continues to use the legacy `parse_ast()` compatibility wrapper so the structured Python API does not distort the original performance comparison.
 
 Run it with:
 
@@ -119,22 +210,13 @@ Measured on March 27, 2026 in the local project virtual environment with Python 
 
 **Result:** `sprocket-py` was `5.45x` faster than `miniwdl` on mean runtime for this benchmark input.
 
-## Next Steps for GSoC
+## What This PoC Still Does Not Deliver
 
-This proof of concept focuses on validating the FFI boundary and confirming that the Rust parser can be invoked cleanly from Python. The longer-term GSoC objective is to move beyond raw diagnostic tuples and expose the full `wdl_ast` as rich Python-native objects.
+This repository is still a proof of concept, not the final GSoC package. It does **not** yet provide:
 
-Planned directions include:
+- full Python-native AST models,
+- async analysis or linting entry points,
+- rich Python exceptions mapped from analysis/runtime failures,
+- a finalized public API for workflow/task/document introspection.
 
-- mapping the Rust AST into Python `@dataclass` or `Pydantic` models,
-- exposing structured diagnostics, spans, and node metadata,
-- designing a native-feeling Python API for downstream bioinformatics tooling,
-- preserving Rust-side performance while improving Python developer ergonomics.
-
-## Current Status
-
-This prototype demonstrates that:
-
-- the Rust parser can be compiled into a Python extension with PyO3 and Maturin,
-- both AST-level and CST-level parsing paths are callable from Python,
-- valid WDL input successfully returns zero diagnostics,
-- the foundation is in place for a more complete Python binding layer during GSoC 2026.
+Those are the areas a larger `sprocket-py` effort should tackle next.
