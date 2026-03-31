@@ -115,7 +115,7 @@ PyO3 extension module (sprocket_py)
 ### Local Setup
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Mahathi-s154/sprocket_gsoc_benchmark
 cd sprocket-gsoc-prototype
 
 python3 -m venv .venv
